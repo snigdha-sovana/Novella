@@ -1,0 +1,17 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2 class="mb-4">💬 Community Chat</h2>
+
+<div class="chat-box" id="chatBox">
+    <!-- Messages will appear here -->
+</div>
+
+<form id="chatForm" class="mt-3 d-flex">
+    <input type="text" id="chatInput" class="form-control me-2" placeholder="Type a message..." required>
+    <button type="submit" class="btn btn-primary">Send</button>
+</form>
+
+<!-- Socket.IO + Chat Script -->
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script src="{{ url_for('static', filename='js/socket.js') }}"></script>
+{% endblock %}

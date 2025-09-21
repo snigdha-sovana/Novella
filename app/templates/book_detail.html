@@ -1,0 +1,41 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <h2>{{ book.title }}</h2>
+        <p class="lead">by {{ book.author }}</p>
+        <p><span class="badge bg-info">{{ book.genre }}</span></p>
+        <p><strong>Tropes:</strong> {{ book.tropes }}</p>
+        <p><strong>Total Pages:</strong> {{ book.pages }}</p>
+        <p><strong>Total Chapters:</strong> {{ book.chapters }}</p>
+    </div>
+    <div class="col-md-4 text-end">
+        {% if current_user.is_authenticated %}
+            <form method="POST" action="{{ url_for('library.add_book') }}">
+                <input type="hidden" name="book_id" value="{{ book.id }}">
+                <button type="submit" class="btn btn-success">➕ Add to My Library</button>
+            </form>
+        {% else %}
+            <p><a href="{{ url_for('auth.login') }}" class="btn btn-primary">Login to Add</a></p>
+        {% endif %}
+    </div>
+</div>
+
+<hr>
+
+<h4 class="mt-4">📝 Reviews</h4>
+{% if reviews %}
+    <ul class="list-group">
+        {% for review in reviews %}
+        <li class="list-group-item">
+            <strong>{{ review.user.username }}:</strong> {{ review.content }}
+            {% if review.rating %}
+                <span class="badge bg-warning text-dark">{{ review.rating }}/5</span>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <p class="text-muted">No reviews yet. Be the first to review!</p>
+{% endif %}
+{% endblock %}

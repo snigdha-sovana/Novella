@@ -1,0 +1,13 @@
+<nav class="navbar">
+  <a href="{{ url_for('main.index') }}">Home</a>
+  <a href="{{ url_for('main.explore') }}">Explore</a>
+  <a href="{{ url_for('library.personal_library') }}">My Library</a>
+  <a href="{{ url_for('community.chat') }}">Community</a>
+  {% if current_user.is_authenticated %}
+    <span>👋 {{ current_user.username }}</span>
+    <a href="{{ url_for('auth.logout') }}">Logout</a>
+  {% else %}
+    <a href="{{ url_for('auth.login') }}">Login</a>
+    <a href="{{ url_for('auth.signup') }}">Signup</a>
+  {% endif %}
+</nav>
