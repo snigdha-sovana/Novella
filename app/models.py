@@ -1,95 +1,136 @@
+import uuid
 from datetime import datetime
-from flask_login import UserMixin
-from werkzeug.security import generate_password_hash, check_password_hash
-from . import db, login_manager
+from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey
+from sqlalchemy.types import TypeDecorator
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+from app.database import Base
 
 
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    library_items = db.relationship("UserBook", back_populates="user")
-    journals = db.relationship("JournalEntry", back_populates="user")
-    reviews = db.relationship("Review", back_populates="user")
-    messages = db.relationship("Message", back_populates="user")
-
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+def generate_uuid():
+    return str(uuid.uuid4())
 
 
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
+class GUID(TypeDecorator):
+    """Platform-independent GUID type.
+    Uses PostgreSQL's native UUID type for PostgreSQL database, and String(36) for SQLite.
+    """
+    impl = String
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(UUID(as_uuid=False))
+        else:
+            return dialect.type_descriptor(String(36))
 
 
-class Book(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(250), nullable=False)
-    author = db.Column(db.String(200), nullable=False)
-    genre = db.Column(db.String(100))
-    tropes = db.Column(db.String(300))  # comma-separated string or JSON
-    pages = db.Column(db.Integer)
-    chapters = db.Column(db.Integer)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+class Profile(Base):
+    __tablename__ = "profiles"
 
-    library_items = db.relationship("UserBook", back_populates="book")
-    reviews = db.relationship("Review", back_populates="book")
+    id = Column(GUID, primary_key=True)  # Matches Supabase auth.users UUID
+    username = Column(String, nullable=True)
+    avatar_url = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-
-class UserBook(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    book_id = db.Column(db.Integer, db.ForeignKey("book.id"))
-    pages_read = db.Column(db.Integer, default=0)
-    chapters_read = db.Column(db.Integer, default=0)
-    status = db.Column(db.String(30), default="reading")  # reading/completed
-    added_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(
-        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
-    )
-
-    user = db.relationship("User", back_populates="library_items")
-    book = db.relationship("Book", back_populates="library_items")
-    journals = db.relationship("JournalEntry", back_populates="userbook")
+    library_items = relationship("UserLibrary", back_populates="user", cascade="all, delete-orphan")
+    progress_items = relationship("Progress", back_populates="user", cascade="all, delete-orphan")
+    journal_entries = relationship("JournalEntry", back_populates="user", cascade="all, delete-orphan")
+    reviews = relationship("Review", back_populates="user", cascade="all, delete-orphan")
 
 
-class JournalEntry(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    userbook_id = db.Column(db.Integer, db.ForeignKey("user_book.id"))
-    title = db.Column(db.String(200))
-    content = db.Column(db.Text)
-    progress_pages = db.Column(db.Integer)
-    progress_chapters = db.Column(db.Integer)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+class Book(Base):
+    __tablename__ = "books"
 
-    user = db.relationship("User", back_populates="journals")
-    userbook = db.relationship("UserBook", back_populates="journals")
+    id = Column(GUID, primary_key=True, default=generate_uuid)
+    title = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=True)
+    author = Column(String, nullable=False, index=True)
+    isbn = Column(String, nullable=True, index=True)
+    total_pages = Column(Integer, default=0)
+    total_chapters = Column(Integer, default=0)
+    cover_url = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    added_by = Column(GUID, ForeignKey("profiles.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-
-class Review(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    book_id = db.Column(db.Integer, db.ForeignKey("book.id"))
-    rating = db.Column(db.Integer)  # 1–5 stars
-    text = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    user = db.relationship("User", back_populates="reviews")
-    book = db.relationship("Book", back_populates="reviews")
+    library_entries = relationship("UserLibrary", back_populates="book", cascade="all, delete-orphan")
+    progress_records = relationship("Progress", back_populates="book", cascade="all, delete-orphan")
+    journal_entries = relationship("JournalEntry", back_populates="book", cascade="all, delete-orphan")
+    reviews = relationship("Review", back_populates="book", cascade="all, delete-orphan")
 
 
-class Message(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    room = db.Column(db.String(100))
-    text = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+class UserLibrary(Base):
+    __tablename__ = "user_library"
 
-    user = db.relationship("User", back_populates="messages")
+    id = Column(GUID, primary_key=True, default=generate_uuid)
+    user_id = Column(GUID, ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    book_id = Column(GUID, ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
+    status = Column(String, nullable=False, default="want_to_read")  # want_to_read, reading, completed
+    added_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("Profile", back_populates="library_items")
+    book = relationship("Book", back_populates="library_entries")
+
+
+class Progress(Base):
+    __tablename__ = "progress"
+
+    id = Column(GUID, primary_key=True, default=generate_uuid)
+    user_id = Column(GUID, ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    book_id = Column(GUID, ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
+    current_page = Column(Integer, default=0)
+    current_chapter = Column(Integer, default=0)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("Profile", back_populates="progress_items")
+    book = relationship("Book", back_populates="progress_records")
+
+
+class JournalEntry(Base):
+    __tablename__ = "journal_entries"
+
+    id = Column(GUID, primary_key=True, default=generate_uuid)
+    user_id = Column(GUID, ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    book_id = Column(GUID, ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("Profile", back_populates="journal_entries")
+    book = relationship("Book", back_populates="journal_entries")
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    id = Column(GUID, primary_key=True, default=generate_uuid)
+    user_id = Column(GUID, ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    book_id = Column(GUID, ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
+    rating = Column(Integer, nullable=False)  # 1 to 5
+    review_text = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("Profile", back_populates="reviews")
+    book = relationship("Book", back_populates="reviews")
+
+
+class CommunityPost(Base):
+    __tablename__ = "community_posts"
+
+    id = Column(GUID, primary_key=True, default=generate_uuid)
+    user_id = Column(GUID, ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    book_id = Column(GUID, ForeignKey("books.id", ondelete="SET NULL"), nullable=True)
+    title = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class CommunityMessage(Base):
+    __tablename__ = "community_messages"
+
+    id = Column(GUID, primary_key=True, default=generate_uuid)
+    user_id = Column(GUID, ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
